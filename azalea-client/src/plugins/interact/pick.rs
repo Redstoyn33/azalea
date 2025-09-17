@@ -83,7 +83,7 @@ pub type PickableEntityQuery<'world, 'state, 'a> = Query<
     (Without<Dead>, Without<Marker>, Without<LocalEntity>),
 >;
 
-pub struct PickOpts<'world, 'state, 'a, 'b, 'c> {
+pub struct PickOpts<'a> {
     look_direction: LookDirection,
     eye_position: Vec3,
     world: &'a Instance,
@@ -97,7 +97,7 @@ pub struct PickOpts<'world, 'state, 'a, 'b, 'c> {
 /// [`HitResultComponent`].
 ///
 /// Also see [`pick_block`].
-pub fn pick(opts: PickOpts<'_, '_, '_, '_, '_>) -> HitResult {
+pub fn pick(opts: PickOpts<'_>) -> HitResult {
     // vanilla does extra math here to calculate the pick result in between ticks by
     // interpolating, but since clients can still only interact on exact ticks, that
     // isn't relevant for us.
