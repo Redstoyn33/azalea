@@ -35,14 +35,11 @@ pub fn update_hit_result_component(
             &EntityDimensions,
             &LookDirection,
             &InstanceName,
-            &Physics,
             &Attributes,
         ),
         With<LocalEntity>,
     >,
     instance_container: Res<InstanceContainer>,
-    physics_query: PhysicsQuery,
-    pickable_query: PickableEntityQuery,
 ) {
     for (
         entity,
@@ -51,12 +48,10 @@ pub fn update_hit_result_component(
         dimensions,
         look_direction,
         world_name,
-        physics,
         attributes,
     ) in &mut query
     {
         let block_pick_range = attributes.block_interaction_range.calculate();
-        let entity_pick_range = attributes.entity_interaction_range.calculate();
 
         let eye_position = position.up(dimensions.eye_height.into());
 
@@ -66,15 +61,10 @@ pub fn update_hit_result_component(
         let world = world_lock.read();
 
         let hit_result = pick(PickOpts {
-            source_entity: entity,
             look_direction: *look_direction,
             eye_position,
-            aabb: &physics.bounding_box,
             world: &world,
-            entity_pick_range,
             block_pick_range,
-            physics_query: &physics_query,
-            pickable_query: &pickable_query,
         });
         if let Some(mut hit_result_ref) = hit_result_ref {
             **hit_result_ref = hit_result;
@@ -94,15 +84,10 @@ pub type PickableEntityQuery<'world, 'state, 'a> = Query<
 >;
 
 pub struct PickOpts<'world, 'state, 'a, 'b, 'c> {
-    source_entity: Entity,
     look_direction: LookDirection,
     eye_position: Vec3,
-    aabb: &'a AABB,
     world: &'a Instance,
-    entity_pick_range: f64,
     block_pick_range: f64,
-    physics_query: &'a PhysicsQuery<'world, 'state, 'b>,
-    pickable_query: &'a PickableEntityQuery<'world, 'state, 'c>,
 }
 
 /// Get the block or entity that a player would be looking at if their eyes were
@@ -117,8 +102,7 @@ pub fn pick(opts: PickOpts<'_, '_, '_, '_, '_>) -> HitResult {
     // interpolating, but since clients can still only interact on exact ticks, that
     // isn't relevant for us.
 
-    let mut max_range = opts.entity_pick_range.max(opts.block_pick_range);
-    let mut max_range_squared = max_range.powi(2);
+    let mut max_range = opts.block_pick_range;
 
     let block_hit_result = pick_block(
         opts.look_direction,
@@ -126,66 +110,12 @@ pub fn pick(opts: PickOpts<'_, '_, '_, '_, '_>) -> HitResult {
         &opts.world.chunks,
         max_range,
     );
-    let block_hit_result_dist_squared = block_hit_result
-        .location
-        .distance_squared_to(opts.eye_position);
-    if !block_hit_result.miss {
-        max_range_squared = block_hit_result_dist_squared;
-        max_range = block_hit_result_dist_squared.sqrt();
-    }
 
-    let view_vector = view_vector(opts.look_direction);
-    let end_position = opts.eye_position + (view_vector * max_range);
-    let inflate_by = 1.;
-    let pick_aabb = opts
-        .aabb
-        .expand_towards(view_vector * max_range)
-        .inflate_all(inflate_by);
-
-    let is_pickable = |entity: Entity| {
-        // TODO: ender dragon and projectiles have extra logic here. also, we shouldn't
-        // be able to pick spectators.
-        if let Ok(armor_stand_marker) = opts.pickable_query.get(entity) {
-            if let Some(armor_stand_marker) = armor_stand_marker
-                && armor_stand_marker.0
-            {
-                false
-            } else {
-                true
-            }
-        } else {
-            true
-        }
-    };
-    let entity_hit_result = pick_entity(PickEntityOpts {
-        source_entity: opts.source_entity,
-        eye_position: opts.eye_position,
-        end_position,
-        world: opts.world,
-        pick_range_squared: max_range_squared,
-        predicate: &is_pickable,
-        aabb: &pick_aabb,
-        physics_query: opts.physics_query,
-    });
-
-    if let Some(entity_hit_result) = entity_hit_result
-        && entity_hit_result
-            .location
-            .distance_squared_to(opts.eye_position)
-            < block_hit_result_dist_squared
-    {
-        filter_hit_result(
-            HitResult::Entity(entity_hit_result),
-            opts.eye_position,
-            opts.entity_pick_range,
-        )
-    } else {
-        filter_hit_result(
-            HitResult::Block(block_hit_result),
-            opts.eye_position,
-            opts.block_pick_range,
-        )
-    }
+    filter_hit_result(
+        HitResult::Block(block_hit_result),
+        opts.eye_position,
+        opts.block_pick_range,
+    )
 }
 
 fn filter_hit_result(hit_result: HitResult, eye_position: Vec3, range: f64) -> HitResult {
